@@ -1,8 +1,24 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // All reads/writes go through the authenticated server using its IAM identity.
-    // Admin SDK access uses IAM and is not granted by these client rules.
+    function owner() {
+      return request.auth != null && request.auth.uid == 'REPLACE_WITH_OWNER_UID';
+    }
+    match /users/{uid}/todo/state {
+      allow get: if owner() && uid == request.auth.uid;
+      allow create: if owner() && uid == request.auth.uid && valid() && request.resource.data.revision == 1;
+      allow update: if owner() && uid == request.auth.uid && valid() && request.resource.data.revision == resource.data.revision + 1;
+      function valid() {
+        return request.resource.data.keys().hasOnly(['data', 'revision', 'updatedAt'])
+          && request.resource.data.data is map
+          && request.resource.data.data.keys().hasOnly(['version', 'days', 'settings'])
+          && request.resource.data.data.version == 1
+          && request.resource.data.data.days is map
+          && request.resource.data.data.settings is map
+          && request.resource.data.revision is int
+          && request.resource.data.updatedAt == request.time;
+      }
+    }
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,5 +1,7 @@
 # 非公開キーを配信しないGoogleログイン・同期
 
+> 旧構成の参考資料です。現在は一人専用のFirebase Spark構成に変更しています。現行の設定は `FIREBASE_SETUP.md` を参照してください。このCloud Run手順は実行不要です。
+
 画面はGitHub Pages、本人のGoogle IDトークンを検証するAPIはCloud Run、保存先はFirestoreです。FirebaseブラウザAPIキー、OAuthクライアントシークレット、サービスアカウントJSON秘密鍵は不要です。Google OAuth **クライアントID**は公開識別子で、秘密鍵ではありません。
 
 ## 事前確認

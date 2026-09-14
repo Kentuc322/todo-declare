@@ -2,11 +2,11 @@
 
 日次計画 → 集中 → 夜の振り返りで、タスクをやり切る能力を育てる日本語Webアプリ。依存ライブラリなしの静的サイトです。
 
-## Googleログイン・保存結果の通知（追加）
+## 専用ログイン・保存結果の通知
 
 保存中・完了・失敗を画面右下の通知で表示します。Friction同期は応答を確認し、未応答時はエラーを表示。
 
-Google認証の検証とFirestore保存をバックエンドへ移しました。**Cloud Runの公開・接続設定が済むまではクラウド機能は無効です。** ローカル保存・バックアップは利用可能。[BACKEND_SETUP.md](BACKEND_SETUP.md)にキーを発行せず公開する手順を記載しています。Firestoreへの接続は実行アカウント、GitHubからの更新はOIDC。APIキー・OAuthシークレット・JSON秘密鍵は使いません。GitHub Pagesにタスクデータは置きません。
+Firebase Sparkの無料枠で、一人専用のメール/パスワード認証とFirestore同期を利用します。課金設定・Cloud Run・GitHub Secrets・管理用秘密鍵は不要です。[FIREBASE_SETUP.md](FIREBASE_SETUP.md)に設定手順を記載しています。実際のFirebase Web設定は各端末の画面から入力し、GitHubや公開ファイルに含めません。Firestore側で指定UIDだけを許可するルールの公開が必要です。設定前も端末保存・バックアップは利用できます。旧backendとBACKEND_SETUP.mdは現在使いません。
 
 ## 使い方
 

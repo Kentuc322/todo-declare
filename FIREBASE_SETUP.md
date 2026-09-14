@@ -1,46 +1,57 @@
-# Googleログイン・端末間同期の初期設定
+# 一人専用のFirebase設定（課金設定なし）
 
-> 現在、この手順による接続は停止しています。キーを公開しない方針のため、実際の設定値を公開ファイルやチャットへ追加しないでください。以下は従来構成の参考資料であり、再開の指示ではありません。今後の構成は SECURITY.md を参照してください。
+現在の構成はGitHub Pages + Firebase Authentication（メール/パスワード）+ Firestoreです。Cloud Run、GitHub Secrets、サービスアカウント秘密鍵は不要です。Sparkプランを維持してください。無料枠上限に達すると利用が制限されるため、端末保存とJSONバックアップを併用します。
 
-GitHub Pagesで画面を配信し、Firebase AuthenticationとCloud Firestoreで本人のデータを保存します。GoogleログインはFirebaseの公式SDKを使用。クライアント設定だけではアクセスを保護できないため、下記のルール公開が必須です。
+## 1. 以前のキーを交換
 
-## 1. Firebaseプロジェクト
+以前公開されたキーはGoogle Cloud Consoleで失効・交換してください。Git履歴の変更だけではキーは失効しません。新しいWeb用APIキーも秘密鍵ではありませんが、今回はGitHubにも公開ファイルにも保存せず各端末に入力します。Firebase関連APIに用途を限定し、他のGoogle API用のキーと兼用しないでください。必要に応じてWebリファラー制限を設定し、認証動作を確認します。キー制限はSecurity Rulesの代わりにはなりません。
 
-[Firebase Console](https://console.firebase.google.com/)でGoogleログインし、「プロジェクトを作成」。Google Analyticsはこのアプリには不要なのでオフにできます。支払い・有料プランへの変更は不要な構成です（利用枠を超えた場合は動作が制限されます）。規約への同意は本人が行ってください。
+## 2. 専用ユーザーを一人作成
 
-## 2. Googleログイン
+Firebase Console → Authentication → Sign-in methodでメール/パスワードを有効化します。Googleログインや匿名認証は、他のアプリで使っていなければ無効化します。
 
-プロジェクトのAuthentication → 始める → Sign-in methodでGoogleを有効にし、サポートメールを選んで保存。
+Users → Add userで専用ユーザーを作成し、長く固有のパスワードを設定します。パスワードはパスワード管理アプリに保管し、チャット、GitHub、設定JSONには入れないでください。作成したユーザーのUIDをコピーします。UIDは秘密情報ではありません。
 
-Authentication → Settings → Authorized domainsに `kentuc322.github.io` を追加します。開発時のみ `127.0.0.1` / `localhost` も必要に応じて追加。
+アプリには新規登録画面がありませんが、これは第三者による認証ユーザー作成を完全に防ぐものではありません。データのアクセス制限は次のルールで行います。
 
-## 3. Firestore
+## 3. Firestoreのアクセスルールを公開
 
-Cloud Firestore → データベースを作成 → Standard edition、データベースID `(default)` を選択。地域は日本利用なら東京などを選びます。地域の変更は容易ではないため、作成時に確認してください。
+Firestore Databaseのデフォルトデータベースを作成（既存ならそのまま使用）します。
 
-「本番環境モード」で開始し、Rulesタブにリポジトリの `firestore.rules` の全文を貼り付けて公開してください。**テストモードの全員アクセス可能なルールは使わないでください。** Firebase CLIを使う場合は `firebase deploy --only firestore:rules --project <project-id>`。
+このリポジトリの `firestore.rules` をFirestore → Rulesへ貼り付け、`REPLACE_WITH_OWNER_UID` を手順2のUIDに置き換え、Publishします。未設定のテンプレートはアクセスを許可しません。
 
-ルールは `users/{Google認証UID}/todo/state` だけ本人の読み書きを許可し、他人・未ログイン・一覧取得・削除を拒否します。Security Rulesのシミュレータで、本人のgetを許可、別UID・匿名のgetを拒否することを確認してください。
+許可するのはそのUIDによる `users/{UID}/todo/state` の取得・作成・更新のみです。一覧取得、削除、他のパス、未ログイン、他人のUIDは拒否します。Firebase管理者/Admin SDKにはルールが適用されないため、管理者権限も適切に保護してください。同じプロジェクトを別アプリで使っている場合、この全体ルールへ置き換える前に影響を確認してください。
 
-## 4. Webアプリを登録
+## 4. 各端末から接続設定を入力
 
-Project settings → General → Your appsで `</>`（Web）を選び、Todo Declareを登録。Firebase Hostingは不要です。
+Firebase Console → Project settings → Your appsからWebアプリの公開設定を確認し、アプリの「通知と連携」→「Firebase接続設定」で次の5項目だけをJSONとして入力します。`const firebaseConfig =`などのJavaScript構文は不要です。
 
-FirebaseのWeb SDK構成はブラウザへの設定配信が必要です。キーを非公開にする方針ではこの構成を再開しないでください。秘密鍵やGoogleのパスワードは共有せず、認証情報をサーバー側で管理する別構成を検討してください。
+```json
+{
+  "apiKey": "新しいWeb用APIキー",
+  "authDomain": "todo-declare.firebaseapp.com",
+  "projectId": "todo-declare",
+  "appId": "WebアプリのappId",
+  "ownerUid": "手順2のUID"
+}
+```
 
-## 5. 既存記録の移行
+設定はそのブラウザーのlocalStorageにだけ保存します。別端末でも同じ公開設定を入力してください。Firebaseへの接続時にはキーをGoogleに送信するので、ブラウザーの通信からは見えます。パスワード、OAuthシークレット、サービスアカウントJSONは入力できません。
 
-「通知と連携」でGoogleログイン。ローカル記録が残っていれば「この端末の記録を取り込む」（既存日付は上書きなし）。または「バックアップを読み込む」から手元のJSONを選びます（確認後にログイン中アカウントの記録を置換）。添付バックアップは2026-09-14の5件を検証済みですが、公開コードに含めていません。
+設定後、専用ユーザーでログインします。認証セッションはメモリだけに保持し、ページを開き直すと再ログインが必要です。パスワードは認証のためFirebaseへHTTPS送信しますが、アプリでは永続保存・ログ出力しません。Firebase AuthenticationのAuthorized domainsには `kentuc322.github.io` を登録してください。
 
-別端末で同じGoogleアカウントにログインし、記録を確認します。Frictionは各端末のブラウザで個別にインストール・URL登録が必要です。
+## 5. バックアップ移行と動作確認
 
-## 同期・障害時の仕様
+ログイン前のデータは自動で送信しません。既存端末の「この端末の記録を取り込む」、または添付済みJSONバックアップの読み込みで移行します。以前Googleログインで保存したデータがある場合、メール/パスワード専用ユーザーは別UIDになることがあります。まず旧データのバックアップを取得し、明示的に取り込んでください。
 
-- Google UID別の保存先。ログイン前の記録は自動移行・自動送信しません。
-- 保存完了はFirestoreへの書き込み成功後に通知。失敗時は画面と本人用端末キャッシュに記録を残すため、バックアップして復旧できます。
-- 別端末の更新はリアルタイム反映。ただしフォーム入力中・未同期変更がある場合は勝手に画面を切り替えません。
-- revision付きトランザクションで古い端末からの上書きを拒否。競合時はバックアップ後に「最新データを読み込む」。自動マージ・オフライン書き込みキューはありません。
-- クラウド保存は1アカウント1ドキュメント、JSON換算750KBまで。長期の大量記録が必要になったら日付別保存への移行が必要です。
-- ログアウト後はローカルモードへ戻り、他アカウントの記録を表示しません。端末キャッシュはバックアップ用に残るため、共有端末ではブラウザのサイトデータを管理してください。
+確認すること：
 
-参考：[Googleログイン](https://firebase.google.com/docs/auth/web/google-signin)、[本人だけアクセスできるルール](https://firebase.google.com/docs/firestore/security/rules-conditions)、[トランザクション](https://firebase.google.com/docs/firestore/manage-data/transactions)。
+- 未ログイン/別UIDではFirestoreの読み書きが拒否される（Rulesのテスト機能で確認）。
+- 正しいUIDで初回保存・更新ができる。
+- 別端末でログインすると同じ記録が読み込まれる。
+- 別端末の保存が反映され、競合時には上書きせずエラーになる。
+- オフライン保存は端末に残り、クラウド同期成功とは表示されない。
+
+公開用アプリコードと各端末のキャッシュは秘密の保管庫ではありません。共有端末ではブラウザープロファイルの分離/終了後のサイトデータ削除を行ってください。XSS、悪意ある拡張機能、盗まれたログイン情報まで防ぐ構成ではありません。
+
+公式資料：[料金](https://firebase.google.com/pricing)、[APIキー](https://firebase.google.com/docs/projects/api-keys)、[認証とルール](https://firebase.google.com/docs/rules/rules-and-auth)、[認証セッション](https://firebase.google.com/docs/auth/web/auth-state-persistence)

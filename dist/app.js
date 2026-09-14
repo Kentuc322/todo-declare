@@ -37,7 +37,7 @@ const cloud=new CloudStore((user,remote)=>{
   try{pending=JSON.parse(localStorage.getItem(cacheKey()+'.pending'));if(pending)validate(pending.data);}catch{pending=null;}
   if(pending&&!adoptRemote){data=pending.data;cloud.revision=pending.revision;cloudDirty=true;render();tell('この端末に未同期の記録が残っています。バックアップを保存し、保存を再試行するか最新データを読み込んでください。','error');return;}
   if(adoptRemote){localStorage.removeItem(cacheKey()+'.pending');adoptRemote=false;}
-  data=remote;cloudDirty=false;formDirty=false;localStorage.setItem(cacheKey(),JSON.stringify(data));render();sync();tell('Googleアカウントのデータを読み込みました');
+  data=remote;cloudDirty=false;formDirty=false;localStorage.setItem(cacheKey(),JSON.stringify(data));render();sync();tell('専用ユーザーのデータを読み込みました');
 },(remote,revision)=>{
   if(cloudDirty||formDirty){tell('別の端末で更新されました。入力をバックアップしてから「最新データを読み込む」を押してください。','error');return;}
   data=remote;cloud.revision=revision;localStorage.setItem(cacheKey(),JSON.stringify(data));render();sync();tell('別の端末からの変更を反映しました');
@@ -70,21 +70,17 @@ bind=function(){
   originalBind();
   bindPersistence();
 };
-function accountPanel(){return `<section class="panel"><h2>Googleアカウントと端末間同期</h2><p>${cloud.user?`ログイン中：${esc(cloud.user.email)}<br>${cloud.ready?'クラウド接続済み':'データを読み込んでいます'}`:cloud.configured?'Googleでログインすると、同じアカウントの端末で記録を共有できます。':'クラウド同期の初期設定がまだ完了していません。Firebaseの接続設定が必要です。'}</p><div class="actions">${cloud.user?'<button id="cloudReload">最新データを読み込む</button><button id="migrateGuest">この端末の記録を取り込む</button><button id="logout">ログアウト</button>':`<button id="login" class="primary" ${cloud.configured?'':'disabled'}>Googleでログイン</button>`}</div><p class="muted">保存先はログインした本人だけがアクセスできる領域です。ログイン前の記録は自動送信しません。初回ログイン後に取り込み、またはバックアップを読み込んでください。</p></section>`;}
+function accountPanel(){return `<section class="panel"><h2>専用ユーザーと端末間同期</h2><p>${cloud.user?`ログイン中：${esc(cloud.user.email)}<br>${cloud.ready?'クラウド接続済み':'クラウドの読み込みが必要です'}`:cloud.configured?'専用のメールアドレス・パスワードでログインしてください。':'Firebase公開設定をこの端末に登録してください。'}</p><div class="actions">${cloud.user?'<button id="cloudReload">最新データを読み込む</button><button id="migrateGuest">この端末の記録を取り込む</button><button id="logout">ログアウト</button>':`<button id="login" class="primary" ${cloud.configured?'':'disabled'}>専用ユーザーでログイン</button><button id="configureCloud">Firebase接続設定</button>`}</div><p class="muted">指定した一人だけがアクセスできます（Firestore側のルール設定が必要です）。未ログインの記録は自動送信しません。ログイン情報はアプリに保存せず、ページを開き直すと再ログインが必要です。</p></section>`;}
 function bindPersistence(){
   const settingView=$('#content .settings');
   if(settingView){
     settingView.querySelector('h1').insertAdjacentHTML('afterend',accountPanel());
     const privacy=settingView.lastElementChild.querySelector('p');
-    privacy.textContent='ログイン中はクラウドに保存し、同じGoogleアカウントの端末で共有します。未ログイン時はこの端末だけに保存します。定期的なバックアップもおすすめします。';
+    privacy.textContent='ログイン中はクラウドに保存し、同じ専用ユーザーで各端末から利用できます。未ログイン時はこの端末だけに保存します。定期的なバックアップもおすすめします。';
     const account=settingView.querySelector('.panel');
-    if(!cloud.configured)account.querySelector('p').textContent='安全なバックエンドへの接続設定が必要です。APIキーや秘密鍵を公開せずにGoogleログイン・端末間同期を行います。';
-    if(cloud.user){
-      account.querySelector('.actions').insertAdjacentHTML('beforeend','<button id="reauth">Googleでログインし直す</button>');
-      $('#reauth').onclick=async()=>{if((cloudDirty||formDirty)&&!confirm('未保存の入力があります。バックアップを保存してからログインし直しますか？'))return;try{await cloud.login();}catch(error){tell(error.message,'error');}};
-    }
+    if($('#configureCloud'))$('#configureCloud').onclick=async()=>{try{await cloud.configure();}catch(error){tell(error.message,'error');}};
   }
-  const asideLabel=$('.aside-bottom p');if(asideLabel)asideLabel.textContent=cloud.user?'Googleアカウントで端末間同期':'データはこのブラウザに保存';
+  const asideLabel=$('.aside-bottom p');if(asideLabel)asideLabel.textContent=cloud.user?'専用ユーザーで端末間同期':'データはこのブラウザに保存';
   if($('#sync'))$('#sync').onclick=()=>sync(true);
   if($('#notifications'))$('#notifications').onclick=async()=>{
     try{if(!('Notification'in window))throw Error('このブラウザでは通知を利用できません');const permission=await Notification.requestPermission();tell(permission==='granted'?'ブラウザ通知を許可しました':'通知は許可されませんでした',permission==='granted'?'success':'error');}catch(err){tell(err.message,'error');}
@@ -124,11 +120,11 @@ function bindPersistence(){
   };
   if($('#import'))$('#import').onchange=async e=>{
     try{const file=e.target.files[0];if(!file||file.size>2000000)throw Error('2MB以下のJSONを選んでください');const next=validate(JSON.parse(await file.text()));
-      if(!confirm(`${cloud.user?'このGoogleアカウントの':'この端末の'}記録をバックアップの内容で置き換えますか？`))return;
+      if(!confirm(`${cloud.user?'この専用ユーザーの':'この端末の'}記録をバックアップの内容で置き換えますか？`))return;
       data=next;if(await save('バックアップを読み込みました'))render();
     }catch(err){tell(err.message,'error');}
   };
-  if($('#login'))$('#login').onclick=async()=>{if(formDirty&&!confirm('入力中の内容があります。ログイン画面へ進みますか？'))return;try{tell('Googleログイン画面を開いています…','pending');await cloud.login();}catch(err){tell(`ログインできませんでした：${err.message}`,'error');}};
+  if($('#login'))$('#login').onclick=async()=>{if(formDirty&&!confirm('入力中の内容があります。ログイン画面へ進みますか？'))return;try{tell('ログイン画面を開いています…','pending');await cloud.login();}catch(err){tell(`ログインできませんでした：${err.message}`,'error');}};
   if($('#logout'))$('#logout').onclick=async()=>{if(cloudDirty||formDirty)return tell('未保存の記録があります。保存またはバックアップをしてからログアウトしてください。','error');try{await cloud.logout();tell('ログアウトしました');}catch(err){tell(err.message,'error');}};
   if($('#cloudReload'))$('#cloudReload').onclick=async()=>{if((cloudDirty||formDirty)&&!confirm('最新データに切り替えると現在の入力は画面から消えます。バックアップを保存しましたか？'))return;try{adoptRemote=true;await cloud.reload();}catch(err){adoptRemote=false;tell(err.message,'error');}};
   if(cloud.user&&cloud.ready&&settingView){
@@ -149,4 +145,4 @@ function timerText(){const n=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())
 function notify(text){tell(text);if('Notification'in window&&Notification.permission==='granted')new Notification('Todo Declare',{body:text});}
 setInterval(()=>{if($('#timer'))$('#timer').textContent=timerText();if(timerEnd&&Date.now()>=timerEnd){timerEnd=0;remaining=0;notify('25分の集中が終了しました。5分休憩しましょう。');render();}const now=new Date(),time=now.toTimeString().slice(0,5),k=dateKey();for(const [key,text]of [['morning','今日の計画を宣言しましょう'],['night','明日の計画を宣言しましょう'],['evening','今日の進捗を振り返りましょう']]){const marker=`todo-notified.${k}.${key}`;if(time===data.settings[key]&&!sessionStorage.getItem(marker)){sessionStorage.setItem(marker,'1');if(!connected)notify(text);}}},1000);
 window.addEventListener('storage',e=>{if(e.key===cacheKey()&&!cloud.user){try{if(formDirty){tell('別タブで更新されました。入力を保存してからページを開き直してください。','error');return;}data=validate(JSON.parse(e.newValue));render();sync();tell('別タブの変更を反映しました');}catch{tell('別タブのデータを読み込めません','error');}}});
-render();void cloud.init().catch(error=>tell(`Googleログインを準備できません：${error.message}`,'error'));setTimeout(()=>sync(),300);setInterval(()=>sync(),60000);
+render();void cloud.init().then(()=>render()).catch(()=>tell('Firebase接続を準備できません。接続設定とネットワークを確認してください。','error'));setTimeout(()=>sync(),300);setInterval(()=>sync(),60000);
