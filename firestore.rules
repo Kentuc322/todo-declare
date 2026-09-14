@@ -1,22 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid}/todo/state {
-      function owner() {
-        return request.auth != null && request.auth.uid == uid
-          && request.auth.token.firebase.sign_in_provider == 'google.com';
-      }
-      function valid() {
-        let d = request.resource.data;
-        return d.keys().hasOnly(['data','revision','updatedAt'])
-          && d.data is map && d.data.keys().hasOnly(['version','days','settings'])
-          && d.data.version == 1 && d.data.days is map && d.data.settings is map
-          && d.revision is int && d.updatedAt == request.time;
-      }
-      allow get: if owner();
-      allow create: if owner() && valid() && request.resource.data.revision == 1;
-      allow update: if owner() && valid() && request.resource.data.revision == resource.data.revision + 1;
-      allow list, delete: if false;
+    // All reads/writes go through the authenticated server using its IAM identity.
+    // Admin SDK access uses IAM and is not granted by these client rules.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

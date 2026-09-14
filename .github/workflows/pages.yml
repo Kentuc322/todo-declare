@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm test
+      - run: node --test backend/tests/*.test.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

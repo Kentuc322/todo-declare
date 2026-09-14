@@ -77,6 +77,12 @@ function bindPersistence(){
     settingView.querySelector('h1').insertAdjacentHTML('afterend',accountPanel());
     const privacy=settingView.lastElementChild.querySelector('p');
     privacy.textContent='ログイン中はクラウドに保存し、同じGoogleアカウントの端末で共有します。未ログイン時はこの端末だけに保存します。定期的なバックアップもおすすめします。';
+    const account=settingView.querySelector('.panel');
+    if(!cloud.configured)account.querySelector('p').textContent='安全なバックエンドへの接続設定が必要です。APIキーや秘密鍵を公開せずにGoogleログイン・端末間同期を行います。';
+    if(cloud.user){
+      account.querySelector('.actions').insertAdjacentHTML('beforeend','<button id="reauth">Googleでログインし直す</button>');
+      $('#reauth').onclick=async()=>{if((cloudDirty||formDirty)&&!confirm('未保存の入力があります。バックアップを保存してからログインし直しますか？'))return;try{await cloud.login();}catch(error){tell(error.message,'error');}};
+    }
   }
   const asideLabel=$('.aside-bottom p');if(asideLabel)asideLabel.textContent=cloud.user?'Googleアカウントで端末間同期':'データはこのブラウザに保存';
   if($('#sync'))$('#sync').onclick=()=>sync(true);
@@ -137,7 +143,7 @@ function bindPersistence(){
       if(await save('端末の記録を取り込みました'))render();
     }catch(err){tell(`取り込めませんでした：${err.message}`,'error');}
   };
-  if(cloud.user&&!cloud.ready)document.querySelectorAll('#content input,#content textarea,#content select,#content button').forEach(el=>{if(!['cloudReload','logout','export'].includes(el.id))el.disabled=true;});
+  if(cloud.user&&!cloud.ready)document.querySelectorAll('#content input,#content textarea,#content select,#content button').forEach(el=>{if(!['cloudReload','logout','export','reauth'].includes(el.id))el.disabled=true;});
 }
 function timerText(){const n=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):remaining;return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
 function notify(text){tell(text);if('Notification'in window&&Notification.permission==='granted')new Notification('Todo Declare',{body:text});}
