@@ -1,5 +1,7 @@
 # Googleログイン・端末間同期の初期設定
 
+> 現在、この手順による接続は停止しています。キーを公開しない方針のため、実際の設定値を公開ファイルやチャットへ追加しないでください。以下は従来構成の参考資料であり、再開の指示ではありません。今後の構成は SECURITY.md を参照してください。
+
 GitHub Pagesで画面を配信し、Firebase AuthenticationとCloud Firestoreで本人のデータを保存します。GoogleログインはFirebaseの公式SDKを使用。クライアント設定だけではアクセスを保護できないため、下記のルール公開が必須です。
 
 ## 1. Firebaseプロジェクト
@@ -24,7 +26,7 @@ Cloud Firestore → データベースを作成 → Standard edition、データ
 
 Project settings → General → Your appsで `</>`（Web）を選び、Todo Declareを登録。Firebase Hostingは不要です。
 
-表示される `firebaseConfig` オブジェクトを共有してください。`apiKey`、`authDomain`、`projectId`、`appId` などの**Web用の公開設定**です。サービスアカウントのJSON秘密鍵やGoogleのパスワードは送らないでください。公開設定を `dist/firebase-config.js` に入れ、GitHub Pagesへ更新するとログインが有効になります。
+FirebaseのWeb SDK構成はブラウザへの設定配信が必要です。キーを非公開にする方針ではこの構成を再開しないでください。秘密鍵やGoogleのパスワードは共有せず、認証情報をサーバー側で管理する別構成を検討してください。
 
 ## 5. 既存記録の移行
 
