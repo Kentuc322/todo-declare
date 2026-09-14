@@ -38,7 +38,7 @@ Firebase Console → Project settings → Your appsからWebアプリの公開�
 
 設定はそのブラウザーのlocalStorageにだけ保存します。別端末でも同じ公開設定を入力してください。Firebaseへの接続時にはキーをGoogleに送信するので、ブラウザーの通信からは見えます。パスワード、OAuthシークレット、サービスアカウントJSONは入力できません。
 
-設定後、専用ユーザーでログインします。認証セッションはメモリだけに保持し、ページを開き直すと再ログインが必要です。パスワードは認証のためFirebaseへHTTPS送信しますが、アプリでは永続保存・ログ出力しません。Firebase AuthenticationのAuthorized domainsには `kentuc322.github.io` を登録してください。
+設定後、専用ユーザーでログインします。Firebase SDKの認証セッションをIndexedDB（利用できない場合はlocalStorage）に保持し、ページを開き直したときに復元します。共有端末では必ずログアウトしてください。パスワードは認証のためFirebaseへHTTPS送信しますが、アプリでは永続保存・ログ出力しません。ログインフォームにname/idと自動入力属性を設定していますが、パスワード保存の提案はブラウザー・パスワード管理アプリの設定に依存します。Firebase AuthenticationのAuthorized domainsには `kentuc322.github.io` を登録してください。
 
 ## 5. バックアップ移行と動作確認
 

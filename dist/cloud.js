@@ -10,12 +10,12 @@ export function publicConfig(value){
 }
 function formDialog(title,fields){
   return new Promise((resolve,reject)=>{
-    const dialog=document.createElement('dialog'),form=document.createElement('form'),heading=document.createElement('h2');heading.textContent=title;form.append(heading);
-    const inputs={};for(const field of fields){const label=document.createElement('label'),input=document.createElement(field.type==='textarea'?'textarea':'input');label.textContent=field.label;if(field.type!=='textarea')input.type=field.type;input.required=true;input.autocomplete=field.autocomplete||'off';inputs[field.name]=input;label.append(input);form.append(label);}
+    const dialog=document.createElement('dialog'),form=document.createElement('form'),heading=document.createElement('h2');heading.textContent=title;form.append(heading);form.id=fields.some(field=>field.type==='password')?'loginForm':'firebaseConfigForm';form.method='post';form.autocomplete='on';
+    const inputs={};for(const field of fields){const label=document.createElement('label'),input=document.createElement(field.type==='textarea'?'textarea':'input');label.textContent=field.label;if(field.type!=='textarea')input.type=field.type;input.name=field.name;input.id=`${form.id}-${field.name}`;label.htmlFor=input.id;input.required=true;input.autocomplete=field.autocomplete||'off';inputs[field.name]=input;label.append(input);form.append(label);}
     const submit=document.createElement('button'),cancel=document.createElement('button');submit.type='submit';submit.textContent='続ける';cancel.type='button';cancel.textContent='キャンセル';form.append(submit,cancel);dialog.append(form);document.body.append(dialog);
     const clear=()=>{for(const input of Object.values(inputs))input.value='';dialog.remove();};
     const abort=()=>{clear();reject(Error('操作をキャンセルしました。'));};cancel.onclick=abort;dialog.addEventListener('cancel',event=>{event.preventDefault();abort();});
-    form.onsubmit=event=>{event.preventDefault();const values=Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value]));clear();resolve(values);};dialog.showModal();
+    form.onsubmit=event=>{event.preventDefault();const values=Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value]));if(form.id==='loginForm'){submit.disabled=true;cancel.disabled=true;resolve({...values,finish:clear});}else{clear();resolve(values);}};dialog.showModal();
   });
 }
 export class CloudStore {
@@ -26,7 +26,15 @@ export class CloudStore {
     this.config=publicConfig(JSON.parse(raw));this.configured=true;
     const [app,auth,db]=await Promise.all(['app','auth','firestore'].map(name=>import(`https://www.gstatic.com/firebasejs/12.18.0/firebase-${name}.js`)));
     this.sdk={...auth,...db};const {ownerUid,...config}=this.config;
-    this.app=app.initializeApp(config);this.auth=auth.initializeAuth(this.app,{persistence:auth.inMemoryPersistence});this.db=db.getFirestore(this.app);
+    this.app=app.initializeApp(config);this.auth=auth.initializeAuth(this.app,{persistence:[auth.indexedDBLocalPersistence,auth.browserLocalPersistence]});this.db=db.getFirestore(this.app);
+    await this.auth.authStateReady();await this.acceptUser(this.auth.currentUser);
+    this.authObserver=auth.onAuthStateChanged(this.auth,user=>{void this.acceptUser(user).catch(this.onError);});
+  }
+  async acceptUser(user){
+    if(!user){this.unsubscribe?.();this.unsubscribe=null;this.user=null;this.ready=false;this.revision=0;this.onUser(null,null);return;}
+    if(user.uid!==this.config.ownerUid){await this.sdk.signOut(this.auth);throw Error('このユーザーにはアクセス権がありません。');}
+    if(this.user?.uid===user.uid)return this.loading;
+    this.user={uid:user.uid,email:user.email};this.ref=this.sdk.doc(this.db,'users',user.uid,'todo','state');this.onUser(this.user,null);this.loading=this.reload();await this.loading;
   }
   async configure(){
     if(this.user)throw Error('ログアウトしてから設定してください。');
@@ -36,9 +44,7 @@ export class CloudStore {
   async login(){
     if(!this.auth)throw Error('Firebase接続設定を確認してください。');if(this.user)throw Error('先にログアウトしてください。');
     const credentials=await formDialog('専用ユーザーでログイン',[{name:'email',label:'メールアドレス',type:'email',autocomplete:'username'},{name:'password',label:'パスワード',type:'password',autocomplete:'current-password'}]);
-    let result;try{result=await this.sdk.signInWithEmailAndPassword(this.auth,credentials.email,credentials.password);}catch{throw Error('ログインできませんでした。入力内容とFirebase設定を確認してください。');}finally{credentials.password='';credentials.email='';}
-    if(result.user.uid!==this.config.ownerUid){await this.sdk.signOut(this.auth);throw Error('このユーザーにはアクセス権がありません。');}
-    this.user={uid:result.user.uid,email:result.user.email};this.ref=this.sdk.doc(this.db,'users',this.user.uid,'todo','state');this.onUser(this.user,null);await this.reload();
+    try{const result=await this.sdk.signInWithEmailAndPassword(this.auth,credentials.email,credentials.password);await this.acceptUser(result.user);}catch{throw Error('ログインまたはデータの読み込みに失敗しました。入力内容とFirebaseルールを確認してください。');}finally{credentials.finish();credentials.password='';credentials.email='';}
   }
   watch(){
     this.unsubscribe?.();const uid=this.user.uid;
