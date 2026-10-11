@@ -1,4 +1,13 @@
 export const dateKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+export function weekKey(d = new Date()) {
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return dateKey(monday);
+}
+export function ensureWeekly(data) {
+  if (!data.settings.weeklyPlans) data.settings.weeklyPlans = {};
+  return data.settings.weeklyPlans;
+}
 export function score(day) {
   if(Number.isFinite(day?.endScore))return day.endScore;
   const tasks = day?.tasks || [];
@@ -27,5 +36,14 @@ export function validate(data) {
   }
   for (const k of ['morning','evening','night']) if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.settings[k])) throw Error('通知時刻が不正です');
   if (!(data.settings.morning < data.settings.night && data.settings.night <= data.settings.evening)) throw Error('朝 < 翌日計画 ≤ 振り返り の順にしてください');
+  const weeklyPlans=ensureWeekly(data);
+  if(typeof weeklyPlans!=='object'||Array.isArray(weeklyPlans)||Object.keys(weeklyPlans).length>520)throw Error('週次計画が不正です');
+  for(const [key,plan] of Object.entries(weeklyPlans)){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(key)||dateKey(new Date(`${key}T12:00:00`))!==key||!plan||!Array.isArray(plan.items)||plan.items.length>50)throw Error('週次計画が不正です');
+    if(plan.plannedAt!==undefined&&plan.plannedAt!==null&&Number.isNaN(Date.parse(plan.plannedAt)))throw Error('週次計画の確定日時が不正です');
+    for(const item of plan.items){
+      if(typeof item.id!=='string'||!item.id||item.id.length>100||typeof item.title!=='string'||!item.title.trim()||item.title.length>200||!Array.isArray(item.weekdays)||!item.weekdays.length||item.weekdays.length>7||new Set(item.weekdays).size!==item.weekdays.length||item.weekdays.some(value=>!Number.isInteger(value)||value<1||value>7))throw Error('週次計画の項目が不正です');
+    }
+  }
   return data;
 }

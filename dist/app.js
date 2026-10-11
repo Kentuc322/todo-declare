@@ -2,9 +2,10 @@ import {dateKey,score,validate,closeDays,actualTime} from './core.js';
 import {createFeedback} from './feedback.js';
 import {CloudStore} from './cloud.js';
 import {smallPanel,journal} from './task-extras.js';
+import {weeklyPanel,addWeeklyItem,removeWeeklyItem,confirmWeeklyPlan,currentWeek} from './weekly.js';
 const KEY='todo-declare.v1';
 let data;
-try { data=validate(JSON.parse(localStorage.getItem(KEY))); } catch { data={version:1,days:{},settings:{morning:'08:00',night:'20:00',evening:'21:00'}}; }
+try { data=validate(JSON.parse(localStorage.getItem(KEY))); } catch { data=validate({version:1,days:{},settings:{morning:'08:00',night:'20:00',evening:'21:00'}}); }
 let view='today',selected=dateKey(),month=new Date(new Date().getFullYear(),new Date().getMonth(),1),connected=false,timerEnd=0,remaining=1500;
 const $=s=>document.querySelector(s),esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const day=()=>data.days[selected]||{tasks:[]};
@@ -23,7 +24,7 @@ async function save(message='保存しました'){
   if(authInitializing){tell('ログイン状態の読み込み完了までお待ちください','pending');return false;}
   if(saving){tell('保存中です。完了するまでお待ちください。','pending');return false;}
   saving=true;
-  document.body.classList.add('saving');$('#content').setAttribute('aria-busy','true');
+  document.body.classList.add('saving');$('#content').setAttribute('aria-busy','true');$('#weeklyRail').setAttribute('aria-busy','true');
   closeDays(data);const snapshot=structuredClone(data);
   const targetKey=cacheKey();
   try{
@@ -32,11 +33,11 @@ async function save(message='保存しました'){
     else tell(`${message} · この端末に保存`);
     formDirty=false;sync();return true;
   }catch(error){tell(`保存を完了できませんでした：${error.message}。入力はこの画面に残っています。バックアップを保存してください。`,'error');return false;}
-  finally{saving=false;document.body.classList.remove('saving');$('#content').setAttribute('aria-busy','false');}
+  finally{saving=false;document.body.classList.remove('saving');$('#content').setAttribute('aria-busy','false');$('#weeklyRail').setAttribute('aria-busy','false');}
 }
 const cloud=new CloudStore((user,remote)=>{
-  if(!user){cloudDirty=false;try{data=validate(JSON.parse(localStorage.getItem(KEY)));}catch{data={version:1,days:{},settings:{morning:'08:00',night:'20:00',evening:'21:00'}};}render();return;}
-  if(!remote){try{const pending=JSON.parse(localStorage.getItem(cacheKey()+'.pending'));data=validate(pending?.data||JSON.parse(localStorage.getItem(cacheKey())));}catch{data={version:1,days:{},settings:{morning:'08:00',night:'20:00',evening:'21:00'}};}render();tell('アカウントのデータを読み込んでいます…','pending');return;}
+  if(!user){cloudDirty=false;try{data=validate(JSON.parse(localStorage.getItem(KEY)));}catch{data=validate({version:1,days:{},settings:{morning:'08:00',night:'20:00',evening:'21:00'}});}render();return;}
+  if(!remote){try{const pending=JSON.parse(localStorage.getItem(cacheKey()+'.pending'));data=validate(pending?.data||JSON.parse(localStorage.getItem(cacheKey())));}catch{data=validate({version:1,days:{},settings:{morning:'08:00',night:'20:00',evening:'21:00'}});}render();tell('アカウントのデータを読み込んでいます…','pending');return;}
   let pending;
   try{pending=JSON.parse(localStorage.getItem(cacheKey()+'.pending'));if(pending)validate(pending.data);}catch{pending=null;}
   if(pending&&!adoptRemote){data=pending.data;cloud.revision=pending.revision;cloudDirty=true;render();tell('この端末に未同期の記録が残っています。バックアップを保存し、保存を再試行するか最新データを読み込んでください。','error');return;}
@@ -46,12 +47,12 @@ const cloud=new CloudStore((user,remote)=>{
   if(cloudDirty||formDirty){tell('別の端末で更新されました。入力をバックアップしてから「最新データを読み込む」を押してください。','error');return;}
   data=remote;cloud.revision=revision;closeDays(data);localStorage.setItem(cacheKey(),JSON.stringify(data));render();sync();tell('別の端末の記録・通知設定を反映しました');
 },error=>tell(`クラウドに接続できません：${error.message}`,'error'));
-document.addEventListener('input',e=>{if(e.target.closest('#taskForm,#reviewForm,#settingsForm,#smallTaskForm'))formDirty=true;});
-document.addEventListener('click',e=>{if(saving&&e.target.closest('#content,nav')){e.preventDefault();e.stopImmediatePropagation();}},true);
-document.addEventListener('keydown',e=>{if(saving&&e.target.closest('#content,nav')){e.preventDefault();e.stopImmediatePropagation();}},true);
+document.addEventListener('input',e=>{if(e.target.closest('#taskForm,#reviewForm,#settingsForm,#smallTaskForm,#weeklyForm'))formDirty=true;});
+document.addEventListener('click',e=>{if(saving&&e.target.closest('#content,#weeklyRail,nav')){e.preventDefault();e.stopImmediatePropagation();}},true);
+document.addEventListener('keydown',e=>{if(saving&&e.target.closest('#content,#weeklyRail,nav')){e.preventDefault();e.stopImmediatePropagation();}},true);
 window.addEventListener('message',e=>{if(e.source!==window||e.origin!==location.origin||e.data?.source!=='friction-todo')return;connected=e.data.ok;$('#connection').textContent=connected?'Friction 接続済み':'Friction 未接続';if(manualSync){clearTimeout(syncingTimer);manualSync=false;tell(e.data.ok?'Frictionとの同期が完了しました':e.data.error||'Frictionに接続できません',''+(e.data.ok?'success':'error'));}});
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.view;render();});
-function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#dateLabel').textContent=new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});$('#content').innerHTML=view==='today'?today():view==='calendar'?calendar():settings();bind();}
+function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#dateLabel').textContent=new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});$('#content').innerHTML=view==='today'?today():view==='calendar'?calendar():settings();$('#weeklyRail').innerHTML=weeklyPanel(data);bind();}
 function today(){const d=day(),s=score(d),minutes=d.tasks.reduce((n,t)=>n+t.minutes,0);return `<div class="top"><div><p class="eyebrow">DECLARE → FOCUS → REFLECT</p><h1>タスクの宣言と進捗管理</h1><span class="muted">やることを絞って、完了条件まで明確に。</span></div><label>計画する日<input id="selected" type="date" value="${selected}" min="${dateKey()}"></label></div><div class="cards"><div class="card"><small>宣言したタスク</small><div class="metric">${d.tasks.length}<small> 件</small></div></div><div class="card"><small>見積もりの合計</small><div class="metric">${minutes}<small> 分</small></div></div><div class="card"><small>${d.reviewed?'達成度':'現在の進捗'}</small><div class="metric">${s}<small> %</small></div></div></div><div class="layout"><div><section class="panel"><div class="row"><h2>${esc(selected)} のタスク</h2><span class="badge">${d.reviewed?'振り返り済み':d.declared?'宣言済み':'計画中'}</span></div>${d.tasks.length?d.tasks.map((t,i)=>`<div class="task"><div class="row"><span class="task-title">${esc(t.title)}</span>${!d.declared?`<button data-remove="${i}" aria-label="タスクを削除">×</button>`:''}</div><p>完了条件：${esc(t.condition)}<br>見積 ${t.minutes} 分 · 実績 ${t.actualMinutes===undefined?'未記録':t.actualMinutes+' 分'} · 重要度 ${t.weight}${t.skill?' · '+esc(t.skill):''}</p><div class="row"><small>進捗</small><select aria-label="${esc(t.title)} の進捗" data-progress="${i}" ${selected!==dateKey()||!d.declared?'disabled':''}>${[0,25,50,75,100].map(v=>`<option value="${v}" ${t.progress===v?'selected':''}>${v}%${v===100?' 完了':''}</option>`).join('')}</select></div></div>`).join(''):'<div class="empty">まずは、いちばん大切なタスクから。<br>1〜3件を目安に始めましょう。</div>'}${!d.declared?`<form id="taskForm" class="form-grid"><label class="full">タスク<input name="title" maxlength="200" placeholder="例：英単語を30語覚える" required></label><label class="full">完了条件<input name="condition" maxlength="300" placeholder="例：確認テストで24問以上正解する" required></label><label>見積時間（分）<input name="minutes" type="number" min="1" max="480" value="30" required></label><label>重要度<select name="weight"><option value="1">1 · 通常</option><option value="2" selected>2 · 重要</option><option value="3">3 · 最優先</option></select></label><label class="full">身につけたい能力（任意）<input name="skill" maxlength="100" placeholder="語彙力、問題解決力など"></label><button type="submit">＋ タスクを追加</button></form><div class="actions"><button class="primary" id="declare" ${d.tasks.length?'':'disabled'}>この計画を宣言する</button><button id="carry">未完了を引き継ぐ</button></div><p class="muted">宣言後は計画を固定します。見積もりは無理なく。</p>`:''}</section>${!d.reviewed&&selected===dateKey()?`<section class="panel"><p class="eyebrow">EVENING REFLECTION</p><h2>一日の振り返り</h2><form id="reviewForm"><label>できたこと・学んだこと<textarea name="learned" required maxlength="2000"></textarea></label><label>つまずいた原因と、明日変える一つのこと<textarea name="next" required maxlength="2000"></textarea></label><div class="actions"><button class="primary">振り返りを確定する</button></div><p class="muted">振り返り後も当日中は進捗を更新できます。日付変更時の重要度付き達成度が50%未満なら翌日20分、80%未満なら40分の閲覧上限。80%以上なら翌日は制限なし。制限中は30秒の追加待機。小規模タスクは達成度の対象外です。宣言なしの日は時間制限の評価対象外です。</p></form></section>`:d.reviewed?`<section class="panel"><h2>振り返り</h2><p>${esc(d.learned)}</p><p class="muted">次の一歩：${esc(d.next)}</p></section>`:''}</div><div class="side-panels"><section class="panel"><p class="eyebrow">FOCUS SESSION</p><h2>集中タイマー</h2><label>集中するタスク<select id="focusTask"><option>タスクを選択</option>${d.tasks.map(t=>`<option>${esc(t.title)}</option>`).join('')}</select></label><div class="timer" id="timer">${timerText()}</div><div class="actions"><button id="timerToggle" class="primary">${timerEnd?'一時停止':'開始'}</button><button id="timerReset">リセット</button></div><p class="muted">25分集中したら5分休憩。タイマーはこのページを開いたまま使ってください。</p></section><section class="panel"><h2>今日のルール</h2><p>朝 ${data.settings.morning}：当日宣言（必須）<br>夜 ${data.settings.night}：翌日計画（任意）<br>夜 ${data.settings.evening}：振り返り</p><div class="notice">朝の当日宣言は必須です。朝の設定時刻以降は宣言完了までFrictionの対象サイトをロックします。翌日の事前宣言は任意です。振り返り未提出ロックも維持します。</div></section></div></div>`;}
 function calendar(){const y=month.getFullYear(),m=month.getMonth(),first=month.getDay(),count=new Date(y,m+1,0).getDate();return `<div class="top"><div><p class="eyebrow">PROGRESS JOURNAL</p><h1>進捗カレンダー</h1></div><div class="actions"><button id="prev" aria-label="前月">←</button><h2>${y}年 ${m+1}月</h2><button id="nextMonth" aria-label="翌月">→</button></div></div><section class="panel"><div class="calendar">${['日','月','火','水','木','金','土'].map(x=>`<span class="week">${x}</span>`).join('')}${'<span></span>'.repeat(first)}${Array.from({length:count},(_,i)=>{const k=dateKey(new Date(y,m,i+1)),d=data.days[k],s=score(d);return `<button data-day="${k}" class="${(d?.reviewed||d?.endScore!==undefined)?s>=80?'good':s>=50?'mid':'low':''}">${i+1}<b>${(d?.reviewed||d?.endScore!==undefined)?s+'%':d?.declared?'宣言済':'—'}</b></button>`;}).join('')}</div><p class="muted">緑：80%以上　黄：50〜79%　赤：50%未満　—：記録なし</p></section><section class="panel" id="journal"><h2>日付を選んで振り返る</h2><p class="muted">計画・進捗・学んだことを確認できます。</p></section>`;}
 function settings(){return `<div class="settings"><p class="eyebrow">YOUR ROUTINE</p><h1>通知・同期設定</h1><section class="panel"><h2>通知時刻</h2><form id="settingsForm" class="form-grid">${[['morning','当日計画'],['night','翌日計画'],['evening','振り返り']].map(([k,l])=>`<label>${l}<input type="time" name="${k}" value="${data.settings[k]}" required></label>`).join('')}<button class="primary">保存する</button></form><div class="actions"><button id="notifications">ブラウザ通知を許可</button></div><p class="muted">ページを開いている間に通知します。ページを閉じた状態での通知にはFriction連携が必要です。ブラウザ終了中・端末スリープ中の定刻通知は保証されません。</p></section><section class="panel"><h2>Frictionと連携</h2><p>Frictionの設定で「Todo Declare URL」に、下のURLを登録してください。その後「同期する」を押します。</p><input readonly aria-label="Todo Declare URL" value="${esc(location.origin+location.pathname)}"><div class="actions"><button id="sync" class="primary">同期する</button></div><p class="muted">計画・振り返りと通知時刻を拡張機能へ同期します。朝の当日未宣言はロック対象です。翌日の事前宣言は任意で、未宣言でもロックしません。振り返り未提出と、宣言したタスクの達成度による制限を同期します。制限は自己管理用で、拡張機能の無効化などを防ぐものではありません。</p></section><section class="panel"><h2>データを守る</h2><p class="muted">この端末・ブラウザ限定で保存します。アカウント同期はありません。定期的にバックアップしてください。</p><div class="actions"><button id="export">バックアップを保存</button><label>バックアップを読み込む<input type="file" id="import" accept="application/json,.json"></label></div></section></div>`;}
@@ -107,7 +108,7 @@ function bindPersistence(){
     try{if(!('Notification'in window))throw Error('このブラウザでは通知を利用できません');const permission=await Notification.requestPermission();tell(permission==='granted'?'ブラウザ通知を許可しました':'通知は許可されませんでした',permission==='granted'?'success':'error');}catch(err){tell(err.message,'error');}
   };
   if($('#settingsForm'))$('#settingsForm').onsubmit=async e=>{
-    e.preventDefault();const next=Object.fromEntries(new FormData(e.target));
+    e.preventDefault();const next={...data.settings,...Object.fromEntries(new FormData(e.target))};
     try{validate({...data,settings:next});data.settings=next;await save('通知時刻を保存しました');}catch(err){tell(err.message,'error');}
   };
   if($('#taskForm'))$('#taskForm').onsubmit=async e=>{
@@ -161,15 +162,29 @@ function bindPersistence(){
       if(!missing.length)return tell('取り込める日付がありません。同じ日付の記録は上書きしません。');
       if(!confirm(`この端末の${missing.length}日分の記録を ${cloud.user.email} のクラウドへ送信しますか？同じ日付は上書きしません。`))return;
       for(const k of missing)data.days[k]=structuredClone(guest.days[k]);
+      if(!Object.keys(data.settings.weeklyPlans||{}).length&&Object.keys(guest.settings.weeklyPlans||{}).length)data.settings.weeklyPlans=structuredClone(guest.settings.weeklyPlans);
       if(await save('端末の記録を取り込みました'))render();
     }catch(err){tell(`取り込めませんでした：${err.message}`,'error');}
   };
-  if(cloud.user&&!cloud.ready)document.querySelectorAll('#content input,#content textarea,#content select,#content button').forEach(el=>{if(!['cloudReload','logout','export','reauth'].includes(el.id))el.disabled=true;});
-  if(authInitializing)document.querySelectorAll('#content input,#content textarea,#content select,#content button').forEach(el=>el.disabled=true);
+  bindWeekly();
+  if(cloud.user&&!cloud.ready)document.querySelectorAll('#content input,#content textarea,#content select,#content button,#weeklyRail input,#weeklyRail button').forEach(el=>{if(!['cloudReload','logout','export','reauth'].includes(el.id))el.disabled=true;});
+  if(authInitializing)document.querySelectorAll('#content input,#content textarea,#content select,#content button,#weeklyRail input,#weeklyRail button').forEach(el=>el.disabled=true);
+}
+function bindWeekly(){
+  if($('#weeklyForm'))$('#weeklyForm').onsubmit=async event=>{
+    event.preventDefault();const form=new FormData(event.target);
+    try{addWeeklyItem(data,form.get('title'),form.getAll('weekday'));if(await save('今週の予定を追加しました'))render();}catch(error){tell(error.message,'error');}
+  };
+  document.querySelectorAll('[data-weekly-remove]').forEach(button=>button.onclick=async()=>{
+    try{removeWeeklyItem(data,Number(button.dataset.weeklyRemove));if(await save('今週の予定を削除しました'))render();}catch(error){tell(error.message,'error');}
+  });
+  if($('#confirmWeek'))$('#confirmWeek').onclick=async()=>{
+    try{confirmWeeklyPlan(data);if(await save('今週の予定を設定しました'))render();}catch(error){tell(error.message,'error');}
+  };
 }
 function timerText(){const n=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):remaining;return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
 function notify(text){tell(text);if('Notification'in window&&Notification.permission==='granted')new Notification('Todo Declare',{body:text});}
-setInterval(()=>{if(authInitializing)return;if($('#timer'))$('#timer').textContent=timerText();if(timerEnd&&Date.now()>=timerEnd){timerEnd=0;remaining=0;notify('25分の集中が終了しました。5分休憩しましょう。');render();}const now=new Date(),time=now.toTimeString().slice(0,5),k=dateKey();for(const [key,text]of [['morning','今日の計画を宣言しましょう'],['night','明日の計画を宣言しましょう'],['evening','今日の進捗を振り返りましょう']]){const marker=`todo-notified.${k}.${key}`;if(time===data.settings[key]&&!sessionStorage.getItem(marker)){sessionStorage.setItem(marker,'1');if(!connected)notify(text);}}},1000);
+setInterval(()=>{if(authInitializing)return;if($('#timer'))$('#timer').textContent=timerText();if(timerEnd&&Date.now()>=timerEnd){timerEnd=0;remaining=0;notify('25分の集中が終了しました。5分休憩しましょう。');render();}const now=new Date(),time=now.toTimeString().slice(0,5),k=dateKey();for(const [key,text]of [['morning','今日の計画を宣言しましょう'],['night','明日の計画を宣言しましょう'],['evening','今日の進捗を振り返りましょう']]){const marker=`todo-notified.${k}.${key}`;if(time===data.settings[key]&&!sessionStorage.getItem(marker)){sessionStorage.setItem(marker,'1');if(!connected)notify(text);}}const weeklyMarker=`todo-notified.${k}.weekly`;if(now.getDay()===1&&now.getHours()>=20&&!currentWeek(data,now).plan.plannedAt&&!sessionStorage.getItem(weeklyMarker)){sessionStorage.setItem(weeklyMarker,'1');notify('今週の予定を決めましょう。やることと曜日だけで大丈夫です。');}},1000);
 window.addEventListener('storage',e=>{if(e.key===cacheKey()&&!cloud.user){try{if(formDirty){tell('別タブで更新されました。入力を保存してからページを開き直してください。','error');return;}data=validate(JSON.parse(e.newValue));render();sync();tell('別タブの変更を反映しました');}catch{tell('別タブのデータを読み込めません','error');}}});
 render();void cloud.init().then(()=>{authInitializing=false;closeDays(data);render();sync();}).catch(()=>{authInitializing=false;render();tell('Firebase接続を準備できません。接続設定とネットワークを確認してください。','error');});setInterval(()=>sync(),60000);
 setInterval(()=>{
