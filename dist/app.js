@@ -78,7 +78,8 @@ bind=function(){
 function accountPanel(){return `<section class="panel"><h2>専用ユーザーと端末間同期</h2><p>${cloud.user?`ログイン中：${esc(cloud.user.email)}<br>${cloud.ready?'クラウド接続済み':'クラウドの読み込みが必要です'}`:cloud.configured?'専用のメールアドレス・パスワードでログインしてください。':'Firebase公開設定をこの端末に登録してください。'}</p><div class="actions">${cloud.user?'<button id="cloudReload">最新データを読み込む</button><button id="migrateGuest">この端末の記録を取り込む</button><button id="logout">ログアウト</button>':`<button id="login" class="primary" ${cloud.configured?'':'disabled'}>専用ユーザーでログイン</button><button id="configureCloud">Firebase接続設定</button>`}</div><p class="muted">指定した一人だけがアクセスできます（Firestore側のルール設定が必要です）。未ログインの記録は自動送信しません。パスワードそのものは保存せず、Firebaseの認証セッションをこの端末に保持します。共有端末ではログアウトしてください。</p></section>`;}
 function bindPersistence(){
   if(view==='today'){
-    document.querySelector('#content .layout > div')?.insertAdjacentHTML('beforeend',smallPanel(day(),selected===dateKey()));
+    document.querySelector('#content .side-panels')?.insertAdjacentHTML('beforeend',smallPanel(day(),selected===dateKey()));
+    compactTodayLayout();
     if($('#smallTaskForm'))$('#smallTaskForm').onsubmit=async event=>{
       event.preventDefault();if(selected!==dateKey())return tell('当日のタスクだけ追加できます','error');
       const title=new FormData(event.target).get('title').trim();if(!title)return;
@@ -181,6 +182,37 @@ function bindWeekly(){
   if($('#confirmWeek'))$('#confirmWeek').onclick=async()=>{
     try{confirmWeeklyPlan(data);if(await save('今週の予定を設定しました'))render();}catch(error){tell(error.message,'error');}
   };
+}
+function compactTodayLayout(){
+  const main=document.querySelector('#content .layout > div:first-child'),side=document.querySelector('#content .side-panels');if(!main||!side)return;
+  const panels=[...document.querySelectorAll('#content .panel')];
+  const reflection=panels.find(panel=>panel.querySelector('h2')?.textContent.includes('振り返り'));
+  const focus=panels.find(panel=>panel.querySelector('h2')?.textContent==='集中タイマー');
+  const rules=panels.find(panel=>panel.querySelector('h2')?.textContent==='今日のルール');
+  const quick=$('#smallTasks');
+  reflection?.classList.add('reflection-panel');focus?.classList.add('focus-panel');rules?.classList.add('rules-panel');quick?.classList.add('quick-panel');
+  if(reflection&&reflection.parentElement!==side)side.prepend(reflection);
+  const taskForm=$('#taskForm');
+  if(taskForm&&!taskForm.closest('details')){
+    const editor=document.createElement('details'),summary=document.createElement('summary');editor.className='task-composer';summary.textContent='＋ 宣言タスクを追加';taskForm.before(editor);editor.append(summary,taskForm);
+  }
+  const reviewForm=$('#reviewForm');
+  if(reviewForm&&!reviewForm.closest('details')){
+    const editor=document.createElement('details'),summary=document.createElement('summary');editor.className='reflection-editor';summary.textContent=selected<dateKey()?'振り返りを入力する':'今日を振り返る';
+    const [hours,minutes]=data.settings.evening.split(':').map(Number),now=new Date();editor.open=selected<dateKey()||selected===dateKey()&&(now.getHours()*60+now.getMinutes()>=hours*60+minutes);reviewForm.before(editor);editor.append(summary,reviewForm);
+  }
+  if(rules&&!rules.querySelector('details')){
+    const editor=document.createElement('details'),summary=document.createElement('summary');editor.className='rules-editor';summary.textContent='制限ルールを確認';const nodes=[...rules.children].filter(node=>node.tagName!=='H2');rules.append(editor);editor.append(summary,...nodes);
+  }
+  const utilityPanels=[['reflection','振り返り',reflection],['quick','小タスク',quick],['focus','集中',focus],['rules','ルール',rules]].filter(([, ,panel])=>panel);
+  if(!side.querySelector('.utility-tabs')){
+    const tabs=document.createElement('div');tabs.className='utility-tabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','今日の補助機能');
+    const eveningMinutes=data.settings.evening.split(':').map(Number).reduce((hours,minutes)=>hours*60+minutes),now=new Date();
+    let active=selected===dateKey()&&now.getHours()*60+now.getMinutes()>=eveningMinutes&&!day().reviewed?'reflection':'quick';
+    const show=name=>{active=name;for(const [key,,panel]of utilityPanels)panel.hidden=key!==name;for(const button of tabs.children){const selected=button.dataset.utility===name;button.classList.toggle('active',selected);button.setAttribute('aria-selected',String(selected));}};
+    for(const [key,label,panel]of utilityPanels){panel.dataset.utilityPanel=key;panel.setAttribute('role','tabpanel');const button=document.createElement('button');button.type='button';button.dataset.utility=key;button.setAttribute('role','tab');button.textContent=label;button.onclick=()=>show(key);tabs.append(button);}
+    side.prepend(tabs);show(active);
+  }
 }
 function timerText(){const n=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):remaining;return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
 function notify(text){tell(text);if('Notification'in window&&Notification.permission==='granted')new Notification('Todo Declare',{body:text});}
